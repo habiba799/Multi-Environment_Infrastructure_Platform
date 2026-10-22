@@ -1,0 +1,23 @@
+repos:
+  # 1. Standard YAML syntax & file formatting checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # 2. Native Terraform Format Check (Runs natively on Windows without Bash)
+  - repo: local
+    hooks:
+      - id: terraform-fmt
+        name: Terraform Format
+        entry: terraform fmt
+        language: system
+        files: \.tf$
+
+  # 3. Gitleaks - Secret Scanner
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
