@@ -1,26 +1,18 @@
-# Security Group for EC2
+# 1. Security Group for EC2 Application Servers
 resource "aws_security_group" "ec2_sg" {
   name        = "${var.environment}-ec2-sg"
-  description = "Security group for ${var.environment} EC2 instance"
+  description = "Security group for private app instances behind ALB"
   vpc_id      = var.vpc_id
 
-  # Inbound Rule: Allow SSH (Port 22) for connection/troubleshooting
+  # Inbound Rule: Allow HTTP (Port 80) ONLY from the ALB Security Group
   ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [var.alb_security_group_id]
   }
 
-  # Inbound Rule: Allow HTTP (Port 80) for web browser
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Outbound Rule: Allow all traffic to internet
+  # Outbound Rule: Allow all traffic out (so instances can use NAT Gateway for updates)
   egress {
     from_port   = 0
     to_port     = 0
@@ -34,28 +26,55 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-# EC2 Instance Creation
-resource "aws_instance" "app_server" {
-  ami                    = var.ami_id
-  instance_type          = var.instance_type
-  subnet_id              = var.subnet_id
-  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
-  associate_public_ip_address = true
+# 2. EC2 Launch Template (Blueprint for Auto Scaling)
+resource "aws_launch_template" "app" {
+  name_prefix   = "${var.environment}-lt-"
+  image_id      = var.ami_id
+  instance_type = var.instance_type
 
-  user_data_replace_on_change = true
+  network_interfaces {
+    associate_public_ip_address = false # Must be false because instances are in private subnets!
+    security_groups             = [aws_security_group.ec2_sg.id]
+  }
 
-  # Yeh raha User Data jo Nginx install karega
- user_data = <<-EOF
-              #!/bin/bash
-              apt-get update -y
-              apt-get install -y nginx
-              systemctl start nginx
-              systemctl enable nginx
-              echo "<h1>Hello from Dev Environment Ubuntu EC2! Powered by Terraform 🚀</h1>" > /var/www/html/index.html
-              EOF
+  user_data = base64encode(var.user_data)
 
-  tags = {
-    Name        = "${var.environment}-app-server"
-    Environment = var.environment
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Environment = var.environment
+      Name        = "${var.environment}-private-app-server"
+    }
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# 3. Auto Scaling Group (Spanning across multiple private subnets in 2 AZs)
+resource "aws_autoscaling_group" "app" {
+  name_prefix         = "${var.environment}-asg-"
+  desired_capacity    = var.desired_capacity
+  max_size            = var.max_size
+  min_size            = var.min_size
+  vpc_zone_identifier = var.private_subnet_ids # Takes the list of private subnets
+  target_group_arns   = [var.target_group_arn]   # Automatically registers instances to ALB target group
+
+  launch_template {
+    id      = aws_launch_template.app.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Environment"
+    value               = var.environment
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "${var.environment}-private-app-server"
+    propagate_at_launch = true
   }
 }

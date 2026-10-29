@@ -1,26 +1,54 @@
 variable "environment" {
-  description = "Deployment environment name (e.g., dev, staging, prod)"
   type        = string
+  description = "Deployment environment name"
 }
 
 variable "vpc_id" {
-  description = "VPC ID where the security group and EC2 instance will be created"
   type        = string
+  description = "VPC ID"
 }
 
-variable "subnet_id" {
-  description = "Subnet ID where the EC2 instance will be placed"
+variable "private_subnet_ids" {
+  type        = list(string)
+  description = "List of private subnet IDs for the ASG across multiple AZs"
+}
+
+variable "alb_security_group_id" {
   type        = string
+  description = "Security group ID of the ALB to allow incoming traffic from load balancer"
+}
+
+variable "target_group_arn" {
+  type        = string
+  description = "Target group ARN to attach ASG instances"
 }
 
 variable "ami_id" {
-  description = "AMI ID for the EC2 instance" 
   type        = string
-  default     = "ami-0c7217cdde317cfec" # Standard Amazon Linux 2023 (us-east-1)
+  description = "AMI ID for EC2"
 }
 
 variable "instance_type" {
-  description = "EC2 instance size"
   type        = string
-  default     = "t2.micro"
+  default     = "t3.micro"
+}
+
+variable "user_data" {
+  type        = string
+  description = "User data script to configure Nginx"
+}
+
+variable "min_size" {
+  type        = number
+  default     = 1
+}
+
+variable "max_size" {
+  type        = number
+  default     = 2
+}
+
+variable "desired_capacity" {
+  type        = number
+  default     = 2 # Keeps 2 instances running across 2 AZs
 }
